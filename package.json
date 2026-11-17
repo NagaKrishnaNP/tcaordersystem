@@ -1,0 +1,11 @@
+{
+  "name": "tableside",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Restaurant order taking app with shared orders, sales reports and an admin PIN.",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

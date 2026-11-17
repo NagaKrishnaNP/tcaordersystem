@@ -1,0 +1,1225 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0E6B50"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Tableside"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%230E6B50%27/%3E%3Cpath d=%27M18 20h28M18 32h28M18 44h18%27 stroke=%27white%27 stroke-width=%275%27 stroke-linecap=%27round%27/%3E%3C/svg%3E"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Tableside Orders</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Sans:opsz,wght@9..40,400..700&display=swap">
+<style>
+/* Layout: one-column phone app. Sticky header with category chips, scrolling content, floating cart bar, fixed bottom tab bar. Orders, Sales and Items share one date range. Data lives in a shared backend (Claude database or the Netlify function). */
+:root {
+  --bg: #F2F5F2;
+  --surface: #FFFFFF;
+  --ink: #15201B;
+  --muted: #5B6A63;
+  --line: #DAE2DC;
+  --accent: #0E6B50;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DCEFE6;
+  --cash: #7C5200;
+  --cash-soft: #FBEAC4;
+  --upi: #2A4CA0;
+  --upi-soft: #DDE6FA;
+  --danger: #B3261E;
+  --danger-soft: #FBE2E0;
+  --scrim: rgba(10, 20, 15, .45);
+  --font-display: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --nav-h: 62px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1511; --surface: #17211C; --ink: #E6EEE9; --muted: #92A39A; --line: #29352F;
+    --accent: #4FC79F; --accent-ink: #06241A; --accent-soft: #17382D;
+    --cash: #F1C466; --cash-soft: #3A2E0F; --upi: #93B2FF; --upi-soft: #1C2B50;
+    --danger: #FF8F86; --danger-soft: #401D1B; --scrim: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1511; --surface: #17211C; --ink: #E6EEE9; --muted: #92A39A; --line: #29352F;
+  --accent: #4FC79F; --accent-ink: #06241A; --accent-soft: #17382D;
+  --cash: #F1C466; --cash-soft: #3A2E0F; --upi: #93B2FF; --upi-soft: #1C2B50;
+  --danger: #FF8F86; --danger-soft: #401D1B; --scrim: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.4 var(--font-body); -webkit-text-size-adjust: 100%; }
+body.lock { overflow: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+ul { list-style: none; margin: 0; padding: 0; }
+.tab-num { font-variant-numeric: tabular-nums; }
+
+.app { max-width: 520px; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 170px; min-height: 100vh; }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--bg); padding-top: 14px; }
+.brandrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; }
+.brandrow h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.brandrow p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.role { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 14px; font-size: 13px; font-weight: 600; color: var(--muted); min-height: 38px; }
+.role.admin { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+.banner { background: var(--accent-soft); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 12px; }
+.banner.warn { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; min-height: 42px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip i { font-style: normal; font-size: 12px; min-width: 20px; height: 20px; border-radius: 10px; display: inline-grid; place-items: center; background: var(--accent); color: var(--accent-ink); padding: 0 6px; }
+.chip.on i { background: var(--accent-ink); color: var(--accent); }
+
+.searchrow { position: relative; padding-bottom: 12px; }
+.searchrow input { padding-left: 42px; padding-right: 44px; -webkit-appearance: none; appearance: none; }
+.searchrow input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.searchrow .mag { position: absolute; left: 13px; top: 13px; color: var(--muted); pointer-events: none; display: grid; }
+.searchrow .clr { position: absolute; right: 3px; top: 3px; width: 40px; height: 40px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; border-radius: 50%; }
+.shop { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; align-items: start; }
+.shopmain { min-width: 0; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--head-h, 130px) + 8px); max-height: calc(100vh - var(--head-h, 130px) - var(--nav-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px); overflow-y: auto; display: grid; gap: 6px; padding: 6px 6px 8px 0; scrollbar-width: none; }
+.side::-webkit-scrollbar { display: none; }
+.sbtn { position: relative; min-height: 52px; padding: 8px 6px 8px 9px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 12.5px; line-height: 1.2; text-align: left; overflow-wrap: break-word; word-break: normal; hyphens: manual; }
+.sbtn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.sbtn i { position: absolute; top: -6px; right: -4px; font-style: normal; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); padding: 0 5px; box-shadow: 0 0 0 2px var(--bg); }
+.sbtn.on i { background: var(--accent-ink); color: var(--accent); }
+.shop .items > li { padding: 12px 0; gap: 8px; }
+.shop .items > li:first-child { padding-top: 6px; }
+.shop .meta b { font-size: 15px; }
+.shop .step button { width: 38px; height: 38px; }
+.shop .step output { min-width: 22px; }
+.shop .add { padding: 0 16px; }
+@media (min-width: 440px) { .shop { grid-template-columns: 124px minmax(0, 1fr); } .sbtn { font-size: 14px; padding-right: 9px; } }
+.items > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.items > li:last-child { border-bottom: 0; }
+.meta { min-width: 0; }
+.meta b { display: block; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.meta span { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.off .meta b { color: var(--muted); }
+.soldout { font-size: 13px; font-weight: 600; color: var(--muted); border: 1px dashed var(--line); border-radius: 999px; padding: 8px 12px; }
+.add { min-height: 42px; padding: 0 20px; border-radius: 999px; border: 1.5px solid var(--accent); background: transparent; color: var(--accent); font-weight: 700; }
+.step { display: inline-flex; align-items: center; background: var(--accent-soft); border-radius: 999px; }
+.step button { width: 42px; height: 42px; border-radius: 50%; border: 0; background: transparent; color: var(--accent); font-size: 22px; font-weight: 600; line-height: 1; }
+.step output { min-width: 26px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); padding: 28px 4px; text-align: center; }
+.tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 10px; }
+@media (min-width: 560px) { .tgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tbl { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; min-height: 98px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); text-align: left; font: inherit; }
+.tbl b { font-family: var(--font-display); font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
+.tbl span { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.tbl em { font-style: normal; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.tbl.busy { border-color: var(--accent); background: var(--accent-soft); }
+.tbl.busy span { color: var(--ink); font-weight: 700; }
+.tsum { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.tablebar { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; min-width: 0; }
+.tablebar .back { flex: none; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 14px; }
+.tablebar b { font-family: var(--font-display); font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tablebar span { margin-left: auto; flex: none; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+
+.cartbar { position: fixed; left: 0; right: 0; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 10px); z-index: 8; display: flex; justify-content: center; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.cartbtn { width: 100%; max-width: 520px; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 54px; padding: 0 20px; border: 0; border-radius: 16px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); }
+.cartbtn span:last-child { font-variant-numeric: tabular-nums; }
+
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: max(0px, env(safe-area-inset-left, 0px)); padding-right: max(0px, env(safe-area-inset-right, 0px)); }
+nav.tabs .in { max-width: 520px; margin: 0 auto; height: var(--nav-h); display: grid; grid-template-columns: repeat(5, 1fr); }
+nav.tabs button { border: 0; background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; min-width: 0; padding: 0 2px; }
+nav.tabs button.on { color: var(--accent); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+.stack { display: grid; gap: 12px; }
+.sec { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 22px 0 10px; }
+.sec h2 { font-size: 18px; font-weight: 700; }
+.link { border: 0; background: transparent; color: var(--accent); font-weight: 700; padding: 8px 0; min-height: 40px; }
+.muted { color: var(--muted); }
+.page-title { font-size: 22px; font-weight: 700; margin: 6px 0 12px; }
+
+.rangebar { display: grid; gap: 10px; margin-bottom: 14px; }
+.presets { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.presets::-webkit-scrollbar { display: none; }
+.preset { flex: none; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; }
+.preset.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dates > * { min-width: 0; }
+.dates label { font-size: 13px; color: var(--muted); }
+input, select { width: 100%; min-height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 12px; font-size: 16px; }
+.rangenote { color: var(--muted); font-size: 13px; }
+
+.order .top1 { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.order .top1 b { font-family: var(--font-display); font-size: 17px; }
+.order .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.order .what { margin-top: 10px; overflow-wrap: anywhere; }
+.order .bot { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.order .bot strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.badge.Cash { background: var(--cash-soft); color: var(--cash); }
+.badge.UPI { background: var(--upi-soft); color: var(--upi); }
+
+.hero { padding: 18px 16px; }
+.hero small { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+.hero strong { display: block; font-family: var(--font-display); font-size: 44px; line-height: 1.1; letter-spacing: -.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid2 .card strong { display: block; font-size: 22px; font-family: var(--font-display); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.grid2 .card small { color: var(--muted); font-size: 13px; font-weight: 600; }
+.split { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--line); margin: 12px 0 14px; }
+.split i { display: block; height: 100%; }
+.split .c { background: var(--cash); }
+.split .u { background: var(--upi); }
+.legend { display: grid; gap: 10px; }
+.legend div { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.legend .l { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.legend .sw { width: 12px; height: 12px; border-radius: 4px; }
+.legend .v { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+.legend .v span { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
+.top8 li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.top8 li:last-child { border-bottom: 0; }
+.top8 .r { display: flex; justify-content: space-between; gap: 12px; }
+.top8 .r b { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.top8 .r span { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.top8 .q { color: var(--muted); font-size: 13px; font-weight: 500; }
+.bar { height: 6px; border-radius: 3px; background: var(--accent-soft); margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+.catcard .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.catcard .head h3 { font-size: 17px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.catcard .head span { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; }
+.catcard li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.catcard li:last-child { border-bottom: 0; padding-bottom: 0; }
+.catcard li b { font-weight: 600; overflow-wrap: anywhere; }
+.catcard .q { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+.catcard .a { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
+
+.rows > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rows > li:last-child { border-bottom: 0; }
+.rowbtn { width: 100%; text-align: left; background: transparent; border: 0; padding: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; }
+.mini { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; }
+.price { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.locked { text-align: center; padding: 28px 0; display: grid; justify-items: center; gap: 10px; }
+.locked .lk { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.locked h2 { font-size: 24px; font-weight: 700; }
+.locked p { max-width: 34ch; color: var(--muted); }
+.err { color: var(--danger); font-size: 14px; font-weight: 600; min-height: 20px; }
+.locked .err { color: var(--danger); }
+.locked .hint { font-size: 13px; }
+.dots { display: flex; gap: 12px; justify-content: center; margin: 14px 0 4px; }
+.dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--muted); }
+.dot.f { background: var(--accent); border-color: var(--accent); }
+.shake { animation: shake .35s; }
+@keyframes shake { 20% { transform: translateX(-8px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); } }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; max-width: 300px; margin: 8px auto 0; }
+.pad button { min-height: 62px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font-family: var(--font-display); font-size: 24px; font-weight: 600; }
+.pad button:active { background: var(--accent-soft); }
+.pad .ghost { visibility: hidden; }
+
+.scrim { position: fixed; inset: 0; z-index: 30; background: var(--scrim); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; display: flex; justify-content: center; }
+.panel { width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; background: var(--surface); border-radius: 22px 22px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); border: 1px solid var(--line); border-bottom: 0; }
+.panel.in { animation: up .22s ease-out; }
+@keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sh { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.sh h2 { font-size: 21px; font-weight: 700; }
+.x { width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--bg); color: var(--muted); display: grid; place-items: center; }
+form { display: grid; gap: 14px; }
+label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.two > * { min-width: 0; }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 15px; }
+.check input { width: 22px; min-height: 22px; height: 22px; accent-color: var(--accent); }
+.btn { width: 100%; min-height: 52px; border-radius: 14px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; }
+.btn[disabled] { background: var(--line); color: var(--muted); cursor: not-allowed; }
+.btn.danger { background: var(--danger-soft); color: var(--danger); }
+.btn.plain { background: var(--bg); color: var(--ink); }
+.btnrow { display: grid; gap: 10px; }
+.backlink { border: 0; background: transparent; color: var(--accent); font-weight: 700; font-size: 15px; min-height: 40px; padding: 0; margin: 4px 0 2px; }
+.acards { display: grid; gap: 12px; margin-top: 16px; }
+.acard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; text-align: left; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); font: inherit; }
+.acard b { font-family: var(--font-display); font-size: 18px; }
+.acard span { grid-column: 1; color: var(--muted); font-size: 14px; }
+.acard i { grid-row: 1 / span 2; grid-column: 2; font-style: normal; font-size: 26px; color: var(--muted); }
+.admrow { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+.paysw { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+.paysw button { min-height: 40px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 15px; }
+.paysw button.on.Cash { border-color: var(--cash); background: var(--cash-soft); color: var(--cash); }
+.paysw button.on.UPI { border-color: var(--upi); background: var(--upi-soft); color: var(--upi); }
+.mini.del { color: var(--danger); border-color: var(--danger); }
+.lines li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tick { width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 2px solid var(--muted); background: var(--surface); color: var(--accent-ink); display: grid; place-items: center; }
+.tick svg { opacity: 0; }
+.tick.on { background: var(--accent); border-color: var(--accent); }
+.tick.on svg { opacity: 1; }
+.ticknote { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.lines .lt { min-width: 62px; text-align: right; font-variant-numeric: tabular-nums; }
+.lines { margin-top: 14px; }
+.totalrow { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 6px; font-size: 18px; }
+.totalrow strong { font-family: var(--font-display); font-size: 28px; font-variant-numeric: tabular-nums; }
+.lbl { font-weight: 600; font-size: 14px; color: var(--muted); margin: 8px 0; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.seg button { min-height: 56px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface); font-weight: 700; font-size: 17px; }
+.seg button.on.Cash { border-color: var(--cash); background: var(--cash-soft); color: var(--cash); }
+.seg button.on.UPI { border-color: var(--upi); background: var(--upi-soft); color: var(--upi); }
+
+#toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translate(-50%, -20px); opacity: 0; pointer-events: none; z-index: 40; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; max-width: calc(100% - 32px); transition: .2s; text-align: center; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .panel.in, .shake { animation: none; } #toast { transition: none; } }
+</style>
+
+<div class="app" id="root"></div>
+<div id="sheetRoot"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  var $root = document.getElementById('root');
+  var $sheet = document.getElementById('sheetRoot');
+  var $toast = document.getElementById('toast');
+  var DEFAULT_PIN = '123456';
+  var PIN_LEN = 6;
+  var MAX_DAYS = 93;
+
+  function uid() { return Math.random().toString(36).slice(2, 11); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function inr(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+  function dayKey(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function todayKey() { return dayKey(Date.now()); }
+  function parseKey(k) { var p = String(k).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function addDays(k, n) { var d = parseKey(k); d.setDate(d.getDate() + n); return dayKey(d.getTime()); }
+  function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 86400000); }
+  function validKey(k) { return /^\d{4}-\d{2}-\d{2}$/.test(String(k || '')); }
+  function fmtDay(k) {
+    var d = parseKey(k), o = { day: 'numeric', month: 'short' };
+    if (d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+    return d.toLocaleDateString('en-IN', o);
+  }
+  function timeOf(ts) { return new Date(ts).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }); }
+  var WKEY = 'tableside.waiter';
+  function getWaiter() { try { return localStorage.getItem(WKEY) || ''; } catch (e) { return ''; } }
+  function setWaiter(v) { try { localStorage.setItem(WKEY, v); } catch (e) {} }
+
+  var ICON = {
+    order: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    orders: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+    sales: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+    items: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    menu: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5" stroke-width="3"/>'
+  };
+  function svg(name, size) {
+    var s = size || 22;
+    return '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+  }
+
+  /* ---------- state ---------- */
+  var state = { cats: [], items: [], orders: [], tables: [], open: {}, pinDefault: true };
+  var ui = {
+    tab: 'order', cat: null, cart: {}, tableId: null, checked: {}, adminView: 'home', admin: false, canWrite: null, sheet: null, anim: false,
+    range: { from: todayKey(), to: todayKey() }, draft: { waiter: getWaiter(), pay: null },
+    got: { cats: false, items: false, orders: false, tables: false },
+    fresh: { cats: false, items: false, orders: false },
+    cfg: false, nodb: false, slow: false, failed: false, placing: false, busy: false,
+    pinBuf: '', pinErr: '', pinChecking: false, dirty: false, q: ''
+  };
+  var backend = null, loadTimer = null;
+
+  function byPos(a, b) { var d = (a.pos || 0) - (b.pos || 0); return d || String(a.name || '').localeCompare(String(b.name || '')); }
+  function catById(id) { return state.cats.filter(function (c) { return c.id === id; })[0]; }
+  function itemById(id) { return state.items.filter(function (i) { return i.id === id; })[0]; }
+  function allFresh() { return ui.fresh.cats && ui.fresh.items && ui.fresh.orders; }
+  function menuLoading() { return !ui.nodb && !(ui.got.cats && ui.got.items); }
+  function cartLines() {
+    return state.items.filter(function (i) { return ui.cart[i.id] > 0 && i.avail !== false; }).map(function (i) {
+      return { id: i.id, name: i.name, cat: (catById(i.cat) || {}).name || '', price: i.price, qty: ui.cart[i.id] };
+    });
+  }
+  function cartTotals() {
+    var ls = cartLines();
+    return { lines: ls, count: ls.reduce(function (s, l) { return s + l.qty; }, 0), total: ls.reduce(function (s, l) { return s + l.qty * l.price; }, 0) };
+  }
+  /* Tables: each table keeps its own unpaid order, saved to the shared backend so every phone sees it. */
+  var dirty = {};
+  function defaultTables() { return [1, 2, 3, 4, 5, 6].map(function (n) { return { id: 't' + n, name: 'Table ' + n, pos: n }; }); }
+  function tableById(id) { return state.tables.filter(function (t) { return t.id === id; })[0]; }
+  function cloneCart(c) { var o = {}; Object.keys(c || {}).forEach(function (k) { if (c[k] > 0) o[k] = c[k]; }); return o; }
+  function savedCart(id) { return dirty[id] ? dirty[id].cart : ((state.open[id] || {}).cart || {}); }
+  function tabSummary(id) {
+    var c = id === ui.tableId ? ui.cart : savedCart(id), count = 0, total = 0;
+    state.items.forEach(function (i) { var q = c[i.id]; if (q > 0 && i.avail !== false) { count += q; total += q * i.price; } });
+    return { count: count, total: total };
+  }
+  function queueSave(tid) {
+    if (!tid || !backend || ui.canWrite === false) return;
+    var d = dirty[tid] || (dirty[tid] = {});
+    d.cart = cloneCart(ui.cart); d.waiter = ui.draft.waiter.trim();
+    clearTimeout(d.timer); d.timer = setTimeout(function () { flushSave(tid); }, 400);
+  }
+  function flushSave(tid) {
+    var d = dirty[tid];
+    if (!d || !backend) return Promise.resolve();
+    clearTimeout(d.timer);
+    var sent = d.cart;
+    var w = d.waiter;
+    d.p = Promise.resolve(backend.saveOpen(tid, sent, w)).then(function () {
+      if (Object.keys(sent).length) state.open[tid] = { cart: sent, waiter: w, updated: Date.now() }; else delete state.open[tid];
+      if (dirty[tid] === d && d.cart === sent) delete dirty[tid];
+    }, function (e) {
+      if (dirty[tid] === d) d.timer = setTimeout(function () { flushSave(tid); }, 5000);
+      toast(writeMsg(e));
+    });
+    return d.p;
+  }
+  function openTable(id) {
+    if (ui.tableId && dirty[ui.tableId]) flushSave(ui.tableId);
+    var src = id ? savedCart(id) : {};
+    ui.tableId = id; ui.checked = {}; ui.cart = cloneCart(src); ui.q = ''; ui.draft.pay = null; ui.sheet = null;
+    var w = id ? (state.open[id] || {}).waiter : '';
+    if (w && !ui.draft.waiter) ui.draft.waiter = w;
+    window.scrollTo(0, 0); render();
+  }
+  function toast(msg) {
+    $toast.textContent = msg;
+    $toast.classList.add('show');
+    clearTimeout(toast.t);
+    toast.t = setTimeout(function () { $toast.classList.remove('show'); }, 2600);
+  }
+  function writeMsg(e) {
+    var c = e && e.code;
+    if (c === 'invalid_argument') return 'You do not have permission to do that.';
+    if (c === 'quota_exceeded' || c === 'resource_exhausted') return 'Storage is full. Ask the owner to clear old data.';
+    if (c === 'revoked') return 'Your access changed. Reload the page.';
+    if (c === 'bad_pin') { ui.admin = false; if (backend && backend.setAdminPin) backend.setAdminPin(''); return 'The admin PIN changed. Unlock again.'; }
+    if (c === 'locked') return 'Too many wrong PINs. Wait a minute.';
+    return 'Could not save. Check your connection and try again.';
+  }
+
+  /* ---------- reports ---------- */
+  function summarize(os) {
+    var r = { count: os.length, total: 0, cash: 0, upi: 0, cn: 0, un: 0, days: {}, cats: {}, items: {}, qty: 0 };
+    os.forEach(function (o) {
+      var t = o.total || 0;
+      r.total += t;
+      if (o.pay === 'UPI') { r.upi += t; r.un++; } else { r.cash += t; r.cn++; }
+      var d = r.days[o.day] || (r.days[o.day] = { day: o.day, count: 0, total: 0 });
+      d.count++; d.total += t;
+      (o.lines || []).forEach(function (l) {
+        var cn = l.cat || 'Other', amt = l.qty * l.price;
+        var c = r.cats[cn] || (r.cats[cn] = { name: cn, qty: 0, rev: 0, items: {} });
+        c.qty += l.qty; c.rev += amt; r.qty += l.qty;
+        var it = c.items[l.name] || (c.items[l.name] = { name: l.name, qty: 0, rev: 0 });
+        it.qty += l.qty; it.rev += amt;
+        var a = r.items[l.name] || (r.items[l.name] = { name: l.name, qty: 0, rev: 0 });
+        a.qty += l.qty; a.rev += amt;
+      });
+    });
+    return r;
+  }
+  function isSingle() { return ui.range.from === ui.range.to; }
+  function rangeLabel() {
+    if (isSingle()) return ui.range.from === todayKey() ? 'today' : fmtDay(ui.range.from);
+    return fmtDay(ui.range.from) + ' – ' + fmtDay(ui.range.to);
+  }
+
+  /* ---------- date range ---------- */
+  function clampRange(from, to) {
+    var t = todayKey();
+    if (!validKey(from)) from = t;
+    if (!validKey(to)) to = from;
+    if (from > to) { var x = from; from = to; to = x; }
+    if (to > t) to = t;
+    if (from > to) from = to;
+    if (daysBetween(from, to) >= MAX_DAYS) from = addDays(to, -(MAX_DAYS - 1));
+    return { from: from, to: to };
+  }
+  function setRange(from, to) {
+    var r = clampRange(from, to);
+    if (r.from === ui.range.from && r.to === ui.range.to) { render(); return; }
+    ui.range = r;
+    state.orders = []; ui.got.orders = false; ui.fresh.orders = false;
+    if (backend) { backend.setRange(r.from, r.to); startLoadTimer(); }
+    render();
+  }
+  function presets() {
+    var t = todayKey(), y = addDays(t, -1), m = t.slice(0, 8) + '01';
+    return [
+      { id: 'today', label: 'Today', from: t, to: t },
+      { id: 'yday', label: 'Yesterday', from: y, to: y },
+      { id: 'week', label: 'Last 7 days', from: addDays(t, -6), to: t },
+      { id: 'month', label: 'This month', from: m, to: t },
+      { id: 'd30', label: 'Last 30 days', from: addDays(t, -29), to: t }
+    ];
+  }
+  function rangeBar() {
+    var t = todayKey();
+    var chips = presets().map(function (p) {
+      var on = p.from === ui.range.from && p.to === ui.range.to;
+      return '<button class="preset ' + (on ? 'on' : '') + '" data-act="preset" data-id="' + p.id + '" aria-pressed="' + on + '">' + p.label + '</button>';
+    }).join('');
+    return '<div class="rangebar"><div class="presets">' + chips + '</div><div class="dates"><label>From<input type="date" id="rFrom" value="' + ui.range.from + '" max="' + t + '"></label><label>To<input type="date" id="rTo" value="' + ui.range.to + '" max="' + t + '"></label></div><p class="rangenote">Pick the same date in both boxes for one day. Up to ' + MAX_DAYS + ' days at a time.</p></div>';
+  }
+
+  /* ---------- backends ---------- */
+  async function hashPin(p) {
+    try {
+      if (window.crypto && window.crypto.subtle) {
+        var buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode('tableside:' + p));
+        return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+      }
+    } catch (e) {}
+    return 'p:' + p;
+  }
+
+  /* Backend 1: the Claude database (used when the page runs inside Claude). */
+  function claudeBackend(DB, cb) {
+    var unsubOrders = null, pinHash = null, realTables = [];
+    function rows(snap) { return snap.docs.map(function (d) { var x = Object.assign({}, d.data()); x.id = d.id; return x; }); }
+    return {
+      kind: 'claude',
+      pinNeedsLoad: true,
+      start: function (range) {
+        DB.collection('cats').onSnapshot(function (s) { cb.cats(rows(s), !s.metadata.fromCache); }, cb.dead);
+        DB.collection('items').onSnapshot(function (s) { cb.items(rows(s), !s.metadata.fromCache); }, cb.dead);
+        DB.collection('tables').onSnapshot(function (s) { var r = rows(s); realTables = r.map(function (t) { return t.id; }); cb.tables(r.length ? r : defaultTables(), !s.metadata.fromCache); }, cb.dead);
+        DB.collection('open').onSnapshot(function (s) { var m = {}; rows(s).forEach(function (r) { m[r.id] = r; }); cb.open(m); }, cb.dead);
+        DB.doc('config/admin').onSnapshot(function (s) {
+          var d = s.exists ? s.data() : null;
+          pinHash = d && d.pin ? String(d.pin) : null;
+          cb.pin(pinHash === null);
+        }, cb.dead);
+        this.setRange(range.from, range.to);
+      },
+      setRange: function (from, to) {
+        if (unsubOrders) { unsubOrders(); unsubOrders = null; }
+        unsubOrders = DB.collection('orders').where('day', '>=', from).where('day', '<=', to).onSnapshot(function (s) {
+          cb.orders(rows(s), !s.metadata.fromCache);
+        }, cb.dead);
+      },
+      addOrder: async function (o) {
+        var r = await DB.collection('orders').add(o);
+        if (o.tableId) { try { await DB.collection('open').doc(o.tableId).delete(); } catch (e) {} }
+        return r;
+      },
+      updateOrderPay: function (o, pay) { return DB.collection('orders').doc(o.id).update({ pay: pay }); },
+      deleteOrder: function (o) { return DB.collection('orders').doc(o.id).delete(); },
+      saveOpen: function (tid, cart, waiter) {
+        var d = DB.collection('open').doc(tid);
+        if (!Object.keys(cart).length) return d.delete();
+        return d.set({ cart: cart, waiter: waiter || '', updated: Date.now() });
+      },
+      putTables: async function (list) {
+        var keep = {};
+        list.forEach(function (t) { keep[t.id] = 1; });
+        for (var n = 0; n < list.length; n++) await DB.collection('tables').doc(list[n].id).set({ name: list[n].name, pos: list[n].pos });
+        for (var m = 0; m < realTables.length; m++) {
+          if (keep[realTables[m]]) continue;
+          await DB.collection('tables').doc(realTables[m]).delete();
+          try { await DB.collection('open').doc(realTables[m]).delete(); } catch (e) {}
+        }
+      },
+      saveItem: function (it) {
+        var col = DB.collection('items');
+        if (it.id) return col.doc(it.id).update({ name: it.name, price: it.price, cat: it.cat, avail: it.avail });
+        return col.doc().set({ name: it.name, price: it.price, cat: it.cat, avail: it.avail, pos: Date.now() });
+      },
+      deleteItem: function (id) { return DB.collection('items').doc(id).delete(); },
+      saveCat: function (c) {
+        var col = DB.collection('cats');
+        if (c.id) return col.doc(c.id).update({ name: c.name });
+        return col.doc().set({ name: c.name, pos: Date.now() });
+      },
+      deleteCat: async function (id, itemIds) {
+        for (var n = 0; n < itemIds.length; n++) await DB.collection('items').doc(itemIds[n]).delete();
+        await DB.collection('cats').doc(id).delete();
+      },
+      verifyPin: async function (p) {
+        if (pinHash === null) return p === DEFAULT_PIN;
+        return pinHash === (await hashPin(p)) || pinHash === 'p:' + p;
+      },
+      setPin: async function (p) { await DB.doc('config/admin').set({ pin: await hashPin(p), changedAt: Date.now() }); },
+      setAdminPin: function () {}
+    };
+  }
+
+  /* Backend 2: the Netlify function at /api (used on Netlify). Polls every few seconds. */
+  function httpBackend(cb) {
+    var range = null, adminPin = '', timer = null, lastMenu = '', lastOrders = '', lastTables = '', lastOpen = '', saveDone = 0, seq = 0;
+    async function api(path, opts) {
+      opts = opts || {};
+      var headers = { 'content-type': 'application/json' };
+      if (adminPin) headers['x-admin-pin'] = adminPin;
+      var res = await fetch('/api' + path, { method: opts.method || 'GET', headers: headers, body: opts.body, cache: 'no-store' });
+      var j = {};
+      try { j = await res.json(); } catch (e) {}
+      if (!res.ok) { var err = new Error(j.error || 'Request failed'); err.code = j.code || 'http_' + res.status; throw err; }
+      return j;
+    }
+    async function pullMenu() {
+      var j = await api('/menu');
+      var s = JSON.stringify(j);
+      if (s !== lastMenu) { lastMenu = s; cb.cats(j.cats || [], true); cb.items(j.items || [], true); }
+      cb.pin(!!j.pinIsDefault);
+    }
+    async function pullOrders() {
+      if (!range) return;
+      var my = ++seq, r = range;
+      var j = await api('/orders?from=' + r.from + '&to=' + r.to);
+      if (my !== seq || r !== range) return;
+      var s = JSON.stringify(j.orders || []);
+      if (s !== lastOrders || !ui.got.orders) { lastOrders = s; cb.orders(j.orders || [], true); }
+    }
+    async function pullTables() {
+      var j = await api('/tables');
+      var s = JSON.stringify(j.tables || []);
+      if (s !== lastTables || !ui.got.tables) { lastTables = s; cb.tables(j.tables || [], true); }
+    }
+    async function pullOpen() {
+      var st = Date.now();
+      var j = await api('/open');
+      if (st < saveDone) return;
+      var s = JSON.stringify(j.open || {});
+      if (s !== lastOpen) { lastOpen = s; cb.open(j.open || {}); }
+    }
+    async function pullAll() {
+      try { await Promise.all([pullMenu(), pullOrders(), pullTables(), pullOpen()]); cb.net(true); }
+      catch (e) { cb.net(false); }
+    }
+    return {
+      kind: 'http',
+      pinNeedsLoad: false,
+      start: function (r) {
+        range = r; pullAll();
+        timer = setInterval(function () { if (!document.hidden) pullAll(); }, 6000);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) pullAll(); });
+      },
+      setRange: function (from, to) { range = { from: from, to: to }; lastOrders = ''; pullOrders().then(function () { cb.net(true); }, function () { cb.net(false); }); },
+      addOrder: async function (o) {
+        await api('/orders', { method: 'POST', body: JSON.stringify(o) });
+        saveDone = Date.now(); lastOpen = '';
+        pullOrders().catch(function () {}); pullOpen().catch(function () {});
+      },
+      updateOrderPay: async function (o, pay) {
+        await api('/orders/' + o.day + '/' + encodeURIComponent(o.id), { method: 'PUT', body: JSON.stringify({ pay: pay }) });
+        lastOrders = ''; await pullOrders();
+      },
+      deleteOrder: async function (o) {
+        await api('/orders/' + o.day + '/' + encodeURIComponent(o.id), { method: 'DELETE' });
+        lastOrders = ''; await pullOrders();
+      },
+      saveOpen: async function (tid, cart, waiter) {
+        await api('/open/' + encodeURIComponent(tid), { method: 'PUT', body: JSON.stringify({ cart: cart, waiter: waiter || '' }) });
+        saveDone = Date.now(); lastOpen = '';
+      },
+      putTables: async function (list) {
+        await api('/tables', { method: 'PUT', body: JSON.stringify({ tables: list }) });
+        lastTables = ''; cb.tables(list, true);
+      },
+      putMenu: async function (mut) {
+        var m = cb.getMenu(); mut(m);
+        await api('/menu', { method: 'PUT', body: JSON.stringify(m) });
+        lastMenu = ''; cb.cats(m.cats, true); cb.items(m.items, true);
+      },
+      saveItem: function (it) {
+        return this.putMenu(function (m) {
+          if (it.id) { var x = m.items.filter(function (i) { return i.id === it.id; })[0]; if (x) { x.name = it.name; x.price = it.price; x.cat = it.cat; x.avail = it.avail; } }
+          else m.items.push({ id: uid(), name: it.name, price: it.price, cat: it.cat, avail: it.avail, pos: Date.now() });
+        });
+      },
+      deleteItem: function (id) { return this.putMenu(function (m) { m.items = m.items.filter(function (i) { return i.id !== id; }); }); },
+      saveCat: function (c) {
+        return this.putMenu(function (m) {
+          if (c.id) { var x = m.cats.filter(function (k) { return k.id === c.id; })[0]; if (x) x.name = c.name; }
+          else m.cats.push({ id: uid(), name: c.name, pos: Date.now() });
+        });
+      },
+      resetMenu: async function () { await api('/menu/reset', { method: 'POST' }); lastMenu = ''; await pullMenu(); },
+      deleteCat: function (id) { return this.putMenu(function (m) { m.cats = m.cats.filter(function (c) { return c.id !== id; }); m.items = m.items.filter(function (i) { return i.cat !== id; }); }); },
+      verifyPin: async function (p) { var j = await api('/pin/verify', { method: 'POST', body: JSON.stringify({ pin: p }) }); return !!j.ok; },
+      setPin: async function (p) { await api('/pin', { method: 'PUT', body: JSON.stringify({ newPin: p }) }); adminPin = p; cb.pin(false); },
+      setAdminPin: function (p) { adminPin = p; }
+    };
+  }
+
+  /* ---------- data hooks (backends call these) ---------- */
+  function startLoadTimer() {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(function () { if (!allFresh()) { ui.slow = true; renderData(); } }, 10000);
+  }
+  function afterData() { if (allFresh()) ui.slow = false; renderData(); }
+  var hooks = {
+    cats: function (rows, fresh) { state.cats = rows.slice().sort(byPos); ui.got.cats = true; if (fresh) ui.fresh.cats = true; afterData(); },
+    items: function (rows, fresh) { state.items = rows.slice().sort(byPos); ui.got.items = true; if (fresh) ui.fresh.items = true; afterData(); },
+    orders: function (rows, fresh) {
+      state.orders = rows.map(function (o) { var x = Object.assign({}, o); x.day = x.day || dayKey(x.ts); return x; });
+      ui.got.orders = true; if (fresh) ui.fresh.orders = true; afterData();
+    },
+    tables: function (rows, fresh) { state.tables = rows.slice().sort(byPos); ui.got.tables = true; renderData(); },
+    open: function (map) {
+      state.open = map || {};
+      if (ui.tableId && !dirty[ui.tableId] && !ui.placing) ui.cart = cloneCart((state.open[ui.tableId] || {}).cart);
+      renderData();
+    },
+    pin: function (isDefault) { state.pinDefault = isDefault; ui.cfg = true; renderData(); },
+    dead: function () { ui.failed = true; renderData(); },
+    net: function (ok) { if (ok) { ui.slow = false; ui.failed = false; } else ui.slow = true; renderData(); },
+    getMenu: function () {
+      return { cats: state.cats.map(function (c) { return Object.assign({}, c); }), items: state.items.map(function (i) { return Object.assign({}, i); }) };
+    }
+  };
+  async function connect() {
+    if (window.claude && window.claude.use) {
+      var DB = null;
+      try {
+        var user = await window.claude.use('user');
+        if (user) { var cw = await user.can('data.write'); ui.canWrite = (cw === true || cw === false) ? cw : null; }
+      } catch (e) {}
+      try { DB = await window.claude.use('db'); } catch (e) { DB = null; }
+      if (!DB) { ui.nodb = true; render(); return; }
+      backend = claudeBackend(DB, hooks);
+    } else {
+      backend = httpBackend(hooks);
+    }
+    render();
+    backend.start(ui.range);
+    startLoadTimer();
+  }
+
+  /* ---------- views ---------- */
+  function stepper(id, qty) {
+    var it = itemById(id);
+    var nm = it ? esc(it.name) : '';
+    return '<div class="step"><button type="button" data-act="dec" data-id="' + id + '" aria-label="Remove one ' + nm + '">−</button><output>' + qty + '</output><button type="button" data-act="inc" data-id="' + id + '" aria-label="Add one ' + nm + '">+</button></div>';
+  }
+  function searchRow() {
+    return '<div class="searchrow"><span class="mag">' + svg('search', 20) + '</span><input id="q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search items" aria-label="Search items" value="' + esc(ui.q) + '">' +
+      (ui.q ? '<button type="button" class="clr" data-act="clearq" aria-label="Clear search">' + svg('x', 18) + '</button>' : '') + '</div>';
+  }
+  function tableBar() {
+    if (ui.tab !== 'order' || !ui.tableId) return '';
+    var t = tableById(ui.tableId), c = tabSummary(ui.tableId);
+    return '<div class="tablebar"><button type="button" class="back" data-act="tables">‹ Tables</button><b>' + esc(t ? t.name : '') + '</b><span>' + (c.count ? c.count + ' item' + (c.count > 1 ? 's' : '') + ' · ' + inr(c.total) : 'No items yet') + '</span></div>';
+  }
+  function header() {
+    var d = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+    var role = ui.admin
+      ? '<button class="role admin" data-act="lock">Admin · Lock</button>'
+      : '<button class="role" data-act="tab" data-tab="menu">Admin login</button>';
+    return '<header class="top"><div class="brandrow"><div><h1>Tableside</h1><p>' + d + '</p></div>' + role + '</div>' + tableBar() + (ui.tab === 'order' && ui.tableId ? searchRow() : '') + '</header>';
+  }
+  function banner() {
+    if (ui.nodb) return '<div class="banner warn" role="alert">Shared orders only work when this page is opened from your link in the Claude app or claude.ai, signed in.</div>';
+    if (ui.failed) return '<div class="banner warn" role="alert">Live updates stopped. Reload the page to reconnect.</div>';
+    if (ui.slow) return '<div class="banner">Can’t reach the shared data right now. You are seeing what was last saved, and it updates when the connection returns.</div>';
+    if (ui.canWrite === false) return '<div class="banner">You have view-only access, so you can look at orders but not place them. Ask the owner for Contributor access.</div>';
+    return '';
+  }
+  function itemRow(i, showCat) {
+    var q = ui.cart[i.id] || 0;
+    var on = i.avail !== false;
+    var ctl = q > 0 && on ? stepper(i.id, q) : (on ? '<button class="add" data-act="inc" data-id="' + i.id + '" aria-label="Add ' + esc(i.name) + '">Add</button>' : '<span class="soldout">Sold out</span>');
+    var sub = (showCat ? esc((catById(i.cat) || {}).name || '') + ' · ' : '') + inr(i.price);
+    return '<li class="' + (on ? '' : 'off') + '"><div class="meta"><b>' + esc(i.name) + '</b><span>' + sub + '</span></div>' + ctl + '</li>';
+  }
+  function sideBar(searching) {
+    return '<nav class="side" aria-label="Categories">' + state.cats.map(function (c) {
+      var n = state.items.filter(function (i) { return i.cat === c.id && i.avail !== false; }).reduce(function (s, i) { return s + (ui.cart[i.id] || 0); }, 0);
+      var on = !searching && c.id === ui.cat;
+      return '<button type="button" class="sbtn ' + (on ? 'on' : '') + '" data-act="cat" data-id="' + c.id + '"' + (on ? ' aria-current="true"' : '') + '>' + esc(c.name) + (n ? '<i>' + n + '</i>' : '') + '</button>';
+    }).join('') + '</nav>';
+  }
+  function viewTables() {
+    if (!ui.got.tables) return '<p class="empty">Loading tables…</p>';
+    if (!state.tables.length) return '<p class="empty">No tables yet. ' + (ui.admin ? 'Add some in the Admin tab.' : 'Ask the admin to add tables.') + '</p>';
+    var open = 0, sum = 0;
+    var cards = state.tables.map(function (t) {
+      var c = tabSummary(t.id);
+      if (c.count) { open++; sum += c.total; }
+      var w = (state.open[t.id] || {}).waiter || '';
+      return '<button type="button" class="tbl' + (c.count ? ' busy' : '') + '" data-act="pick-table" data-id="' + t.id + '"><b>' + esc(t.name) + '</b><span>' + (c.count ? c.count + ' item' + (c.count > 1 ? 's' : '') + ' · ' + inr(c.total) : 'Free') + '</span>' + (c.count && w ? '<em>' + esc(w) + '</em>' : '') + '</button>';
+    }).join('');
+    return '<div class="sec" style="margin-top:6px"><h2>Choose a table</h2></div><div class="tsum"><span>' + open + ' open</span><span>' + inr(sum) + ' running</span></div><div class="tgrid">' + cards + '</div><p class="muted" style="margin-top:14px">Tap a table to add items. Each table’s order is saved, so you can switch tables any time and check out when they are done.</p>';
+  }
+  function viewOrder() {
+    if (ui.nodb) return '<p class="empty">The menu can’t load without a connection to the shared data.</p>';
+    if (!ui.tableId) return viewTables();
+    if (menuLoading()) return '<p class="empty">Loading the menu…</p>';
+    if (!state.cats.length) return '<p class="empty">' + (ui.admin ? 'The menu is empty. Open the Admin tab to add categories and items.' : 'The menu is empty. Ask the admin to add items.') + '</p>';
+    var term = ui.q.trim().toLowerCase();
+    var main;
+    if (term) {
+      var words = term.split(/[^a-z0-9]+/).filter(Boolean);
+      var catPos = {};
+      state.cats.forEach(function (c, n) { catPos[c.id] = n; });
+      var hits = state.items.filter(function (i) {
+        var tokens = (i.name + ' ' + ((catById(i.cat) || {}).name || '')).toLowerCase().split(/[^a-z0-9]+/);
+        return words.every(function (w) { return tokens.some(function (t) { return t.indexOf(w) === 0; }); });
+      }).sort(function (a, b) { return (catPos[a.cat] || 0) - (catPos[b.cat] || 0) || byPos(a, b); });
+      main = hits.length
+        ? '<p class="rangenote" style="padding-top:6px">' + hits.length + ' match' + (hits.length === 1 ? '' : 'es') + ' for “' + esc(ui.q.trim()) + '”</p><ul class="items">' + hits.map(function (i) { return itemRow(i, true); }).join('') + '</ul>'
+        : '<p class="empty">No items match “' + esc(ui.q.trim()) + '”. Try another word.</p>';
+    } else {
+      var list = state.items.filter(function (i) { return i.cat === ui.cat; });
+      main = list.length ? '<ul class="items">' + list.map(function (i) { return itemRow(i, false); }).join('') + '</ul>' : '<p class="empty">No items in this category yet.</p>';
+    }
+    return '<div class="shop">' + sideBar(!!term) + '<div class="shopmain">' + main + '</div></div>';
+  }
+  function reportGate(title) {
+    var head = '<h2 class="page-title">' + title + '</h2>' + rangeBar();
+    if (ui.nodb) return head + '<p class="empty">Nothing can load without a connection to the shared data.</p>';
+    if (!ui.got.orders) return head + '<p class="empty">Loading…</p>';
+    return null;
+  }
+  function orderCard(o, multi, adm) {
+    var what = (o.lines || []).map(function (l) { return l.qty + '× ' + esc(l.name); }).join(', ');
+    var pay = o.pay === 'UPI' ? 'UPI' : 'Cash';
+    var when = (multi ? fmtDay(o.day) + ' · ' : '') + timeOf(o.ts);
+    var ctl = '';
+    if (adm) {
+      function pb(v) { return '<button type="button" class="' + (pay === v ? 'on ' + v : '') + '" data-act="setpay" data-id="' + o.id + '" data-v="' + v + '" aria-pressed="' + (pay === v) + '">' + v + '</button>'; }
+      ctl = '<div class="admrow"><div class="paysw" role="group" aria-label="Payment type">' + pb('Cash') + pb('UPI') + '</div><button type="button" class="mini del" data-act="del-ask" data-kind="order" data-id="' + o.id + '">Delete</button></div>';
+    }
+    return '<article class="card order"><div class="top1"><b>#' + o._n + ' · ' + esc(o.table || '—') + '</b><span class="muted tab-num">' + when + '</span></div><div class="sub">Taken by ' + esc(o.waiter || 'Waiter') + '</div><p class="what">' + what + '</p><div class="bot"><span class="badge ' + pay + '">' + pay + '</span><strong>' + inr(o.total) + '</strong></div>' + ctl + '</article>';
+  }
+  function orderById(id) { return state.orders.filter(function (o) { return o.id === id; })[0]; }
+  function viewOrders() {
+    var gate = reportGate('Orders');
+    if (gate) return gate;
+    var head = '<h2 class="page-title">Orders</h2>' + rangeBar();
+    var asc = state.orders.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    var cnt = {};
+    asc.forEach(function (o) { cnt[o.day] = (cnt[o.day] || 0) + 1; o._n = cnt[o.day]; });
+    var os = asc.slice().reverse();
+    var total = os.reduce(function (s, o) { return s + (o.total || 0); }, 0);
+    if (!os.length) return head + '<p class="empty">No orders for ' + esc(rangeLabel()) + '. Orders placed on any phone appear here with who took them and how they were paid.</p>';
+    var multi = !isSingle();
+    return head + '<p class="muted" style="margin-bottom:12px">' + os.length + ' order' + (os.length > 1 ? 's' : '') + ' · ' + inr(total) + '</p><div class="stack">' + os.map(function (o) { return orderCard(o, multi, false); }).join('') + '</div>';
+  }
+  function viewSales() {
+    var gate = reportGate('Sales');
+    if (gate) return gate;
+    var head = '<h2 class="page-title">Sales</h2>' + rangeBar();
+    var r = summarize(state.orders);
+    var out = head + '<div class="card hero"><small>Sales ' + (isSingle() ? (ui.range.from === todayKey() ? 'today' : 'on ' + esc(rangeLabel())) : esc(rangeLabel())) + '</small><strong>' + inr(r.total) + '</strong></div>';
+    if (!r.count) return out + '<p class="empty">No sales recorded for this period.</p>';
+    var cp = r.total ? Math.round(r.cash / r.total * 100) : 0;
+    out += '<div class="grid2" style="margin-top:12px"><div class="card"><small>Orders</small><strong>' + r.count + '</strong></div><div class="card"><small>Average bill</small><strong>' + inr(Math.round(r.total / r.count)) + '</strong></div></div>';
+    out += '<div class="sec"><h2>Cash and UPI</h2></div><div class="card"><div class="split" aria-hidden="true"><i class="c" style="width:' + cp + '%"></i><i class="u" style="width:' + (100 - cp) + '%"></i></div><div class="legend">' +
+      '<div><span class="l"><i class="sw" style="background:var(--cash)"></i>Cash</span><span class="v">' + inr(r.cash) + '<span>' + r.cn + ' order' + (r.cn === 1 ? '' : 's') + '</span></span></div>' +
+      '<div><span class="l"><i class="sw" style="background:var(--upi)"></i>UPI</span><span class="v">' + inr(r.upi) + '<span>' + r.un + ' order' + (r.un === 1 ? '' : 's') + '</span></span></div></div></div>';
+    var days = Object.keys(r.days).sort().reverse().map(function (k) { return r.days[k]; });
+    if (!isSingle() && days.length) {
+      var dmax = Math.max.apply(null, days.map(function (d) { return d.total; })) || 1;
+      out += '<div class="sec"><h2>Day by day</h2></div><div class="card"><ul class="top8">' + days.map(function (d) {
+        return '<li><div class="r"><b>' + esc(fmtDay(d.day)) + ' <span class="q">· ' + d.count + ' order' + (d.count === 1 ? '' : 's') + '</span></b><span>' + inr(d.total) + '</span></div><div class="bar"><i style="width:' + Math.max(4, Math.round(d.total / dmax * 100)) + '%"></i></div></li>';
+      }).join('') + '</ul></div>';
+    }
+    var top = Object.keys(r.items).map(function (k) { return r.items[k]; }).sort(function (a, b) { return b.rev - a.rev; }).slice(0, 8);
+    var max = top.length ? top[0].rev || 1 : 1;
+    out += '<div class="sec"><h2>Best sellers</h2></div><div class="card"><ul class="top8">' + top.map(function (a) {
+      return '<li><div class="r"><b>' + esc(a.name) + ' <span class="q">× ' + a.qty + '</span></b><span>' + inr(a.rev) + '</span></div><div class="bar"><i style="width:' + Math.max(4, Math.round(a.rev / max * 100)) + '%"></i></div></li>';
+    }).join('') + '</ul></div>';
+    return out;
+  }
+  function viewItems() {
+    var gate = reportGate('Items sold');
+    if (gate) return gate;
+    var head = '<h2 class="page-title">Items sold</h2>' + rangeBar();
+    var r = summarize(state.orders);
+    var names = Object.keys(r.cats);
+    if (!names.length) return head + '<p class="empty">No items were ordered for ' + esc(rangeLabel()) + '.</p>';
+    var menuOrder = state.cats.map(function (c) { return c.name; });
+    names.sort(function (a, b) {
+      var ia = menuOrder.indexOf(a), ib = menuOrder.indexOf(b);
+      if (ia < 0) ia = 999; if (ib < 0) ib = 999;
+      return ia - ib || a.localeCompare(b);
+    });
+    var out = head + '<p class="muted" style="margin-bottom:12px">' + r.qty + ' item' + (r.qty === 1 ? '' : 's') + ' sold across ' + names.length + ' categor' + (names.length === 1 ? 'y' : 'ies') + ' · ' + inr(r.total) + ' for ' + esc(rangeLabel()) + '</p><div class="stack">';
+    names.forEach(function (n) {
+      var c = r.cats[n];
+      var its = Object.keys(c.items).map(function (k) { return c.items[k]; }).sort(function (a, b) { return b.qty - a.qty || b.rev - a.rev; });
+      out += '<section class="card catcard"><div class="head"><h3>' + esc(c.name) + '</h3><span>' + c.qty + ' item' + (c.qty === 1 ? '' : 's') + ' · ' + inr(c.rev) + '</span></div><ul>' + its.map(function (i) {
+        return '<li><b>' + esc(i.name) + '</b><span class="q">× ' + i.qty + '</span><span class="a">' + inr(i.rev) + '</span></li>';
+      }).join('') + '</ul></section>';
+    });
+    return out + '</div>';
+  }
+  function viewLocked() {
+    var dots = [];
+    for (var i = 0; i < PIN_LEN; i++) dots.push('<span class="dot ' + (i < ui.pinBuf.length ? 'f' : '') + '"></span>');
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'].map(function (k) {
+      if (k === '') return '<button type="button" class="ghost" tabindex="-1" aria-hidden="true"></button>';
+      if (k === 'back') return '<button type="button" data-act="pinback" aria-label="Delete last digit">←</button>';
+      return '<button type="button" data-act="pinkey" data-k="' + k + '">' + k + '</button>';
+    }).join('');
+    var msg = '&nbsp;';
+    if (ui.pinErr === 'wrong') msg = 'Wrong PIN. Try again.';
+    else if (ui.pinErr === 'locked') msg = 'Too many wrong tries. Wait a minute.';
+    else if (ui.pinErr === 'net') msg = 'Could not check the PIN. Check your connection.';
+    else if (backend && backend.pinNeedsLoad && !ui.cfg && !ui.nodb) msg = 'Loading…';
+    return '<section class="locked"><div class="lk">' + svg('menu', 28) + '</div><h2>Admin only</h2><p>Enter the ' + PIN_LEN + '-digit admin PIN to add, change or delete menu items and prices. The same PIN works on every phone.</p>' +
+      '<div class="dots ' + (ui.pinErr === 'wrong' ? 'shake' : '') + '" role="img" aria-label="' + ui.pinBuf.length + ' of ' + PIN_LEN + ' digits entered">' + dots.join('') + '</div><p class="err" role="alert">' + msg + '</p><div class="pad">' + keys + '</div>' +
+      (ui.cfg && state.pinDefault ? '<p class="hint">The starting PIN is ' + DEFAULT_PIN + '. Change it once you are in.</p>' : '') + '</section>';
+  }
+  function backBtn() { return '<button type="button" class="backlink" data-act="admin-home">‹ Admin</button>'; }
+  function viewAdmin() {
+    if (!ui.admin) return viewLocked();
+    if (ui.adminView === 'menu') return viewMenu();
+    if (ui.adminView === 'orders') return viewAdminOrders();
+    function card(act, v, title, sub) { return '<button type="button" class="acard" data-act="' + act + '"' + (v ? ' data-v="' + v + '"' : '') + '><b>' + title + '</b><span>' + sub + '</span><i aria-hidden="true">›</i></button>'; }
+    return '<h2 class="page-title">Admin</h2><p class="muted">Changes show on every phone straight away.</p><div class="acards">' +
+      card('admin-go', 'menu', 'Menu and tables', 'Add, change or delete categories, items, prices and tables') +
+      card('admin-go', 'orders', 'Manage orders', 'Delete an order made by mistake or change Cash / UPI') +
+      card('change-pin', '', 'Change PIN', PIN_LEN + ' digits, same on every phone') + '</div>';
+  }
+  function viewAdminOrders() {
+    var head = backBtn() + '<h2 class="page-title">Manage orders</h2>' + rangeBar();
+    if (ui.nodb) return head + '<p class="empty">Nothing can load without a connection to the shared data.</p>';
+    if (!ui.got.orders) return head + '<p class="empty">Loading…</p>';
+    var asc = state.orders.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    var cnt = {};
+    asc.forEach(function (o) { cnt[o.day] = (cnt[o.day] || 0) + 1; o._n = cnt[o.day]; });
+    var os = asc.slice().reverse();
+    if (!os.length) return head + '<p class="empty">No orders for ' + esc(rangeLabel()) + '.</p>';
+    var multi = !isSingle();
+    return head + '<p class="muted" style="margin-bottom:12px">Tap Cash or UPI to change how an order was paid, or Delete to remove it.</p><div class="stack">' + os.map(function (o) { return orderCard(o, multi, true); }).join('') + '</div>';
+  }
+  function viewMenu() {
+    if (!ui.admin) return viewLocked();
+    if (ui.nodb) return '<p class="empty">The menu can’t load without a connection to the shared data.</p>';
+    if (menuLoading()) return '<p class="empty">Loading the menu…</p>';
+    var out = backBtn() + '<h2 class="page-title">Menu and tables</h2><p class="muted">Changes show on every phone straight away.</p>';
+    out += '<div class="sec" style="margin-top:14px"><h2>Tables</h2><button class="link" data-act="add-table">Add table</button></div>';
+    out += state.tables.length ? '<div class="card"><ul class="rows">' + state.tables.map(function (t) {
+      var c = tabSummary(t.id);
+      return '<li><div class="meta"><b>' + esc(t.name) + '</b><span>' + (c.count ? 'Open order · ' + inr(c.total) : 'Free') + '</span></div><button class="mini" data-act="edit-table" data-id="' + t.id + '">Edit</button></li>';
+    }).join('') + '</ul></div>' : '<p class="empty">No tables yet.</p>';
+    out += '<div class="sec"><h2>Categories</h2><button class="link" data-act="add-cat">Add category</button></div>';
+    if (!state.cats.length) out += '<p class="empty">Add a category first, then add items inside it.</p>';
+    else out += '<div class="card"><ul class="rows">' + state.cats.map(function (c) {
+      var n = state.items.filter(function (i) { return i.cat === c.id; }).length;
+      return '<li><div class="meta"><b>' + esc(c.name) + '</b><span>' + n + ' item' + (n === 1 ? '' : 's') + '</span></div><button class="mini" data-act="edit-cat" data-id="' + c.id + '">Edit</button></li>';
+    }).join('') + '</ul></div>';
+    state.cats.forEach(function (c) {
+      var list = state.items.filter(function (i) { return i.cat === c.id; });
+      out += '<div class="sec"><h2>' + esc(c.name) + '</h2><button class="link" data-act="add-item" data-cat="' + c.id + '">Add item</button></div><div class="card">';
+      out += list.length ? '<ul class="rows">' + list.map(function (i) {
+        return '<li><button class="rowbtn" data-act="edit-item" data-id="' + i.id + '"><span class="meta"><b>' + esc(i.name) + '</b>' + (i.avail === false ? '<span>Sold out</span>' : '') + '</span><span class="price">' + inr(i.price) + '</span></button></li>';
+      }).join('') + '</ul>' : '<p class="muted">No items yet.</p>';
+      out += '</div>';
+    });
+    if (backend && backend.resetMenu) out += '<div class="sec"><h2>Starting menu</h2></div><div class="card"><ul class="rows"><li><div class="meta"><b>Reset menu</b><span>Replace everything with the built-in starting menu</span></div><button class="mini" data-act="reset-ask">Reset</button></li></ul></div>';
+    return out;
+  }
+  function cartbar() {
+    if (ui.tab !== 'order' || !ui.tableId) return '';
+    var t = cartTotals();
+    if (!t.count) return '';
+    return '<div class="cartbar"><button class="cartbtn" data-act="open-cart"><span>' + t.count + ' item' + (t.count > 1 ? 's' : '') + '</span><span>View order · ' + inr(t.total) + '</span></button></div>';
+  }
+  function nav() {
+    function b(tab, label, icon) { return '<button class="' + (ui.tab === tab ? 'on' : '') + '" data-act="tab" data-tab="' + tab + '"' + (ui.tab === tab ? ' aria-current="page"' : '') + '>' + svg(icon) + '<span>' + label + '</span></button>'; }
+    return '<nav class="tabs" aria-label="Main"><div class="in">' + b('order', 'Order', 'order') + b('orders', 'Orders', 'orders') + b('sales', 'Sales', 'sales') + b('items', 'Items', 'items') + b('menu', 'Admin', 'menu') + '</div></nav>';
+  }
+
+  /* ---------- sheets ---------- */
+  function sh(title) { return '<div class="sh"><h2>' + title + '</h2><button class="x" data-act="close" aria-label="Close">' + svg('x', 20) + '</button></div>'; }
+  function sheetCart() {
+    var t = cartTotals();
+    var done = t.lines.filter(function (l) { return ui.checked[l.id]; }).length, allDone = t.lines.length > 0 && done === t.lines.length;
+    var label = ui.placing ? 'Checking out…' : ui.canWrite === false ? 'View-only access' : !allDone ? 'Tick every item to continue' : ui.draft.pay ? 'Check out · ' + ui.draft.pay : 'Choose Cash or UPI';
+    var dis = ui.placing || ui.canWrite === false || !allDone || !ui.draft.pay;
+    return sh('Check out') +
+      '<div class="two"><label>Table<input value="' + esc((tableById(ui.tableId) || {}).name || '') + '" readonly tabindex="-1" aria-readonly="true"></label><label>Waiter<input id="f-waiter" value="' + esc(ui.draft.waiter) + '" placeholder="Your name" autocomplete="off"></label></div>' +
+      '<ul class="lines">' + t.lines.map(function (l) {
+        var on = !!ui.checked[l.id];
+        return '<li><button type="button" class="tick' + (on ? ' on' : '') + '" role="checkbox" aria-checked="' + on + '" aria-label="Confirm ' + esc(l.name) + '" data-act="tick" data-id="' + l.id + '">' + svg('check', 18) + '</button><div class="meta"><b>' + esc(l.name) + '</b><span>' + inr(l.price) + ' each</span></div>' + stepper(l.id, l.qty) + '<strong class="lt">' + inr(l.qty * l.price) + '</strong></li>';
+      }).join('') + '</ul>' +
+      '<p class="ticknote">' + (allDone ? 'All items confirmed.' : 'Tick each item to confirm it: ' + done + ' of ' + t.lines.length + ' done.') + '</p>' +
+      '<div class="totalrow"><span>Total</span><strong>' + inr(t.total) + '</strong></div>' +
+      '<p class="lbl">Payment received by</p><div class="seg"><button data-act="pay" data-v="Cash" class="' + (ui.draft.pay === 'Cash' ? 'on Cash' : '') + '" aria-pressed="' + (ui.draft.pay === 'Cash') + '">Cash</button><button data-act="pay" data-v="UPI" class="' + (ui.draft.pay === 'UPI' ? 'on UPI' : '') + '" aria-pressed="' + (ui.draft.pay === 'UPI') + '">UPI</button></div>' +
+      '<button class="btn" data-act="place"' + (dis ? ' disabled' : '') + '>' + label + '</button>';
+  }
+  function sheetItem(s) {
+    var it = s.id ? itemById(s.id) : null;
+    var cat = it ? it.cat : (s.cat || (state.cats[0] || {}).id);
+    return sh(it ? 'Edit item' : 'Add item') + '<form data-form="item" novalidate><label>Item name<input id="f-name" value="' + esc(it ? it.name : '') + '" autocomplete="off"></label>' +
+      '<div class="two"><label>Price (₹)<input id="f-price" inputmode="decimal" value="' + (it ? it.price : '') + '" placeholder="0" autocomplete="off"></label><label>Category<select id="f-cat">' + state.cats.map(function (c) { return '<option value="' + c.id + '"' + (c.id === cat ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></label></div>' +
+      '<label class="check"><input type="checkbox" id="f-avail"' + (!it || it.avail !== false ? ' checked' : '') + '> Available to order</label>' +
+      '<p class="err" role="alert">' + esc(s.err || '') + '</p><div class="btnrow"><button class="btn" type="submit"' + (ui.busy ? ' disabled' : '') + '>Save item</button>' + (it ? '<button type="button" class="btn danger" data-act="del-ask" data-kind="item" data-id="' + it.id + '">Delete item</button>' : '') + '</div></form>';
+  }
+  function sheetCat(s) {
+    var c = s.id ? catById(s.id) : null;
+    return sh(c ? 'Edit category' : 'Add category') + '<form data-form="cat" novalidate><label>Category name<input id="f-catname" value="' + esc(c ? c.name : '') + '" placeholder="e.g. Starters" autocomplete="off"></label><p class="err" role="alert">' + esc(s.err || '') + '</p><div class="btnrow"><button class="btn" type="submit"' + (ui.busy ? ' disabled' : '') + '>Save category</button>' + (c ? '<button type="button" class="btn danger" data-act="del-ask" data-kind="cat" data-id="' + c.id + '">Delete category</button>' : '') + '</div></form>';
+  }
+  function sheetTable(s) {
+    var t = s.id ? tableById(s.id) : null;
+    var btn = '', note = '';
+    if (t && tabSummary(t.id).count) note = 'This table has an open order. Check it out before removing the table.';
+    else if (t && state.tables.length <= 1) note = 'Keep at least one table.';
+    else if (t) btn = '<button type="button" class="btn danger" data-act="del-ask" data-kind="table" data-id="' + t.id + '">Remove table</button>';
+    return sh(t ? 'Edit table' : 'Add table') + '<form data-form="table" novalidate><label>Table name<input id="f-tablename" value="' + esc(t ? t.name : '') + '" placeholder="e.g. Table 7 or Takeaway" maxlength="40" autocomplete="off"></label><p class="err" role="alert">' + esc(s.err || '') + '</p><div class="btnrow"><button class="btn" type="submit"' + (ui.busy ? ' disabled' : '') + '>Save table</button>' + btn + '</div>' + (note ? '<p class="muted" style="margin-top:12px">' + note + '</p>' : '') + '</form>';
+  }
+  function sheetPin(s) {
+    return sh('Change admin PIN') + '<form data-form="pin" novalidate><label>New ' + PIN_LEN + '-digit PIN<input id="f-pin" inputmode="numeric" maxlength="' + PIN_LEN + '" autocomplete="off" placeholder="000000"></label><p class="err" role="alert">' + esc(s.err || '') + '</p><button class="btn" type="submit"' + (ui.busy ? ' disabled' : '') + '>Save PIN for all phones</button></form>';
+  }
+  function sheetConfirm(s) {
+    var title, text;
+    if (s.kind === 'item') { var it = itemById(s.id); title = 'Delete ' + esc(it ? it.name : 'item') + '?'; text = 'It disappears from the menu on every phone. Past orders keep their record.'; }
+    else if (s.kind === 'order') { var oo = orderById(s.id); title = 'Delete this order?'; text = oo ? esc(oo.table || 'Order') + ' · ' + inr(oo.total) + ' · ' + (oo.pay === 'UPI' ? 'UPI' : 'Cash') + '. It is removed from Orders and Sales on every phone and cannot be brought back.' : 'This order is gone already.'; }
+    else if (s.kind === 'table') { var tt = tableById(s.id); title = 'Remove ' + esc(tt ? tt.name : 'table') + '?'; text = 'It disappears from the Order tab on every phone. Past orders keep their record.'; }
+    else if (s.kind === 'reset') { title = 'Replace the whole menu?'; text = 'Every category and item you have now is deleted and replaced with the built-in starting menu (The Chatpata Affair). Past orders and sales are not changed.'; }
+    else {
+      var c = catById(s.id); var n = state.items.filter(function (i) { return i.cat === s.id; }).length;
+      title = 'Delete ' + esc(c ? c.name : 'category') + '?'; text = n ? 'This also deletes its ' + n + ' item' + (n > 1 ? 's' : '') + '. Past orders keep their record.' : 'This category has no items.';
+    }
+    return sh(title) + '<p class="muted" style="margin-bottom:16px">' + text + '</p><div class="btnrow"><button class="btn danger" data-act="del-yes" data-kind="' + s.kind + '" data-id="' + s.id + '"' + (ui.busy ? ' disabled' : '') + '>' + (s.kind === 'reset' ? 'Yes, replace the menu' : s.kind === 'table' ? 'Yes, remove' : s.kind === 'order' ? 'Yes, delete order' : 'Yes, delete') + '</button><button class="btn plain" data-act="close">Cancel</button></div>';
+  }
+  function sheetHtml() {
+    var s = ui.sheet;
+    if (!s) return '';
+    var body = s.type === 'cart' ? sheetCart() : s.type === 'item' ? sheetItem(s) : s.type === 'cat' ? sheetCat(s) : s.type === 'pin' ? sheetPin(s) : s.type === 'table' ? sheetTable(s) : sheetConfirm(s);
+    return '<div class="scrim" data-act="close"></div><div class="sheet"><div class="panel ' + (ui.anim ? 'in' : '') + '" role="dialog" aria-modal="true">' + body + '</div></div>';
+  }
+
+  /* ---------- render ---------- */
+  function view() {
+    if (ui.tab === 'orders') return viewOrders();
+    if (ui.tab === 'sales') return viewSales();
+    if (ui.tab === 'items') return viewItems();
+    if (ui.tab === 'menu') return viewAdmin();
+    return viewOrder();
+  }
+  function setHeadH() {
+    var h = document.querySelector('header.top');
+    if (h) document.documentElement.style.setProperty('--head-h', h.offsetHeight + 'px');
+  }
+  window.addEventListener('resize', setHeadH);
+  window.addEventListener('load', setHeadH);
+  function editingDate() { var a = document.activeElement; return !!(a && (a.id === 'rFrom' || a.id === 'rTo' || a.id === 'q')); }
+  function renderData() { if (editingDate()) { ui.dirty = true; return; } render(); }
+  function render() {
+    ui.dirty = false;
+    if (!state.cats.some(function (c) { return c.id === ui.cat; })) ui.cat = state.cats.length ? state.cats[0].id : null;
+    if (ui.tableId && ui.got.tables && !tableById(ui.tableId)) { ui.tableId = null; ui.cart = {}; if (ui.sheet && ui.sheet.type === 'cart') ui.sheet = null; }
+    if (ui.sheet && ui.sheet.type === 'cart' && !cartTotals().count && !ui.placing) ui.sheet = null;
+    var sideOld = document.querySelector('.side');
+    var sst = sideOld ? sideOld.scrollTop : 0;
+    var qOld = document.getElementById('q');
+    var qHad = !!qOld && document.activeElement === qOld;
+    var qSel = qHad ? [qOld.selectionStart, qOld.selectionEnd] : null;
+    var ps = $sheet.querySelector('.panel');
+    var pst = ps ? ps.scrollTop : 0;
+    var saved = {}, af = document.activeElement && document.activeElement.id ? document.activeElement.id : '';
+    $sheet.querySelectorAll('input,select').forEach(function (x) { if (x.id) saved[x.id] = x.type === 'checkbox' ? x.checked : x.value; });
+    $root.innerHTML = header() + '<main>' + banner() + view() + '</main>' + cartbar() + nav();
+    var sideNew = document.querySelector('.side');
+    if (sideNew) sideNew.scrollTop = sst;
+    var qNew = document.getElementById('q');
+    if (qOld && qNew) {
+      qNew.replaceWith(qOld);
+      qOld.value = ui.q;
+      if (qHad) { qOld.focus(); try { qOld.setSelectionRange(qSel[0], qSel[1]); } catch (e) {} }
+    }
+    setHeadH();
+    $sheet.innerHTML = sheetHtml();
+    var np = $sheet.querySelector('.panel');
+    if (np && !ui.anim) np.scrollTop = pst;
+    if (!ui.anim) {
+      Object.keys(saved).forEach(function (id) {
+        var x = document.getElementById(id);
+        if (!x) return;
+        if (x.type === 'checkbox') x.checked = saved[id]; else x.value = saved[id];
+      });
+      if (af && af !== 'rFrom' && af !== 'rTo' && af !== 'q') {
+        var fx = document.getElementById(af);
+        if (fx) { fx.focus(); try { var l = fx.value.length; fx.setSelectionRange(l, l); } catch (e) {} }
+      }
+    }
+    ui.anim = false;
+    document.body.classList.toggle('lock', !!ui.sheet);
+  }
+  function openSheet(s) {
+    ui.sheet = s; ui.anim = true; render();
+    var f = $sheet.querySelector('input[type=text],input:not([type]),input[inputmode]');
+    if (f && s.type !== 'cart') f.focus();
+  }
+  function closeSheet() { ui.sheet = null; render(); }
+
+  /* ---------- actions ---------- */
+  function setQty(id, d) {
+    var it = itemById(id);
+    if (!it || (d > 0 && it.avail === false)) return;
+    var q = (ui.cart[id] || 0) + d;
+    if (q <= 0) delete ui.cart[id]; else ui.cart[id] = q;
+    delete ui.checked[id];
+    if (ui.tableId) queueSave(ui.tableId);
+    render();
+  }
+  function timeout(ms) { return new Promise(function (_, rej) { setTimeout(function () { rej({ code: 'slow' }); }, ms); }); }
+  async function placeOrder() {
+    var t = cartTotals();
+    var tb = tableById(ui.tableId);
+    if (!t.count || !ui.draft.pay || ui.placing || !backend || !tb || !t.lines.every(function (l) { return ui.checked[l.id]; })) return;
+    var today = todayKey();
+    var o = {
+      ts: Date.now(), day: today, table: tb.name, tableId: tb.id, waiter: ui.draft.waiter.trim(),
+      lines: t.lines.map(function (l) { return { name: l.name, cat: l.cat, price: l.price, qty: l.qty }; }),
+      total: t.total, pay: ui.draft.pay
+    };
+    ui.placing = true; render();
+    try {
+      var dd = dirty[tb.id];
+      if (dd) { clearTimeout(dd.timer); if (dd.p) await dd.p; }
+      await Promise.race([backend.addOrder(o), timeout(15000)]);
+      setWaiter(o.waiter);
+      if (dirty[tb.id]) { clearTimeout(dirty[tb.id].timer); delete dirty[tb.id]; }
+      delete state.open[tb.id];
+      ui.cart = {}; ui.checked = {}; ui.tableId = null; ui.draft.pay = null; ui.sheet = null; ui.placing = false;
+      if (ui.range.to !== today) setRange(today, today); else render();
+      toast('Order placed · ' + o.pay + ' · ' + inr(o.total));
+    } catch (e) {
+      ui.placing = false; render();
+      toast(e && e.code === 'slow' ? 'Still sending. Check the Orders tab before placing it again.' : writeMsg(e));
+    }
+  }
+  async function guarded(fn, okMsg) {
+    if (!backend || !ui.admin || ui.busy) return;
+    ui.busy = true; render();
+    try { await fn(); ui.busy = false; ui.sheet = null; render(); toast(okMsg); }
+    catch (e) { ui.busy = false; var m = writeMsg(e); render(); toast(m); }
+  }
+  function pinKey(d) {
+    if (!backend || ui.pinChecking || ui.pinBuf.length >= PIN_LEN) return;
+    if (backend.pinNeedsLoad && !ui.cfg) return;
+    ui.pinBuf += d; ui.pinErr = ''; render();
+    if (ui.pinBuf.length < PIN_LEN) return;
+    var tried = ui.pinBuf;
+    ui.pinChecking = true;
+    backend.verifyPin(tried).then(function (ok) {
+      ui.pinChecking = false; ui.pinBuf = '';
+      if (ok) { ui.admin = true; backend.setAdminPin(tried); toast('Admin unlocked'); } else ui.pinErr = 'wrong';
+      render();
+    }, function (e) {
+      ui.pinChecking = false; ui.pinBuf = '';
+      ui.pinErr = e && e.code === 'locked' ? 'locked' : 'net';
+      render();
+    });
+  }
+  function lockAdmin() { ui.admin = false; ui.adminView = 'home'; ui.pinBuf = ''; ui.pinErr = ''; ui.sheet = null; if (backend) backend.setAdminPin(''); render(); toast('Admin locked'); }
+
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-act]');
+    if (!el) return;
+    var a = el.dataset.act, id = el.dataset.id;
+    if (a === 'tab') { if (el.dataset.tab === 'menu') ui.adminView = 'home'; ui.tab = el.dataset.tab; ui.pinBuf = ''; ui.pinErr = ''; window.scrollTo(0, 0); render(); }
+    else if (a === 'admin-home') { ui.adminView = 'home'; window.scrollTo(0, 0); render(); }
+    else if (a === 'admin-go' && ui.admin) { ui.adminView = el.dataset.v; window.scrollTo(0, 0); render(); }
+    else if (a === 'setpay' && ui.admin) {
+      var po = orderById(id), pv = el.dataset.v;
+      if (po && po.pay !== pv) guarded(function () { return backend.updateOrderPay(po, pv); }, 'Payment changed to ' + pv);
+    }
+    else if (a === 'pick-table') openTable(id);
+    else if (a === 'tables') openTable(null);
+    else if (a === 'add-table' && ui.admin) openSheet({ type: 'table' });
+    else if (a === 'edit-table' && ui.admin) openSheet({ type: 'table', id: id });
+    else if (a === 'cat') { ui.cat = id; ui.q = ''; render(); }
+    else if (a === 'clearq') { ui.q = ''; render(); var qq = document.getElementById('q'); if (qq) qq.focus(); }
+    else if (a === 'inc') setQty(id, 1);
+    else if (a === 'dec') setQty(id, -1);
+    else if (a === 'open-cart') openSheet({ type: 'cart' });
+    else if (a === 'close') closeSheet();
+    else if (a === 'tick') { ui.checked[id] = !ui.checked[id]; render(); }
+    else if (a === 'pay') { ui.draft.pay = el.dataset.v; render(); }
+    else if (a === 'place') placeOrder();
+    else if (a === 'preset') { var p = presets().filter(function (x) { return x.id === id; })[0]; if (p) setRange(p.from, p.to); }
+    else if (a === 'pinkey') pinKey(el.dataset.k);
+    else if (a === 'pinback') { ui.pinBuf = ui.pinBuf.slice(0, -1); ui.pinErr = ''; render(); }
+    else if (a === 'lock') lockAdmin();
+    else if (a === 'change-pin' && ui.admin) openSheet({ type: 'pin' });
+    else if (a === 'add-cat' && ui.admin) openSheet({ type: 'cat' });
+    else if (a === 'edit-cat' && ui.admin) openSheet({ type: 'cat', id: id });
+    else if (a === 'add-item' && ui.admin) openSheet({ type: 'item', cat: el.dataset.cat });
+    else if (a === 'edit-item' && ui.admin) openSheet({ type: 'item', id: id });
+    else if (a === 'reset-ask' && ui.admin) openSheet({ type: 'confirm', kind: 'reset' });
+    else if (a === 'del-ask' && ui.admin) openSheet({ type: 'confirm', kind: el.dataset.kind, id: id });
+    else if (a === 'del-yes') {
+      var k = el.dataset.kind;
+      guarded(async function () {
+        if (k === 'reset') { ui.cart = {}; await backend.resetMenu(); }
+        else if (k === 'order') { var dord = orderById(id); if (dord) await backend.deleteOrder(dord); }
+        else if (k === 'table') { await backend.putTables(state.tables.filter(function (t) { return t.id !== id; })); }
+        else if (k === 'item') { delete ui.cart[id]; await backend.deleteItem(id); }
+        else {
+          var kids = state.items.filter(function (i) { return i.cat === id; }).map(function (i) { return i.id; });
+          kids.forEach(function (x) { delete ui.cart[x]; });
+          await backend.deleteCat(id, kids);
+        }
+      }, k === 'reset' ? 'Menu replaced' : k === 'table' ? 'Table removed' : k === 'order' ? 'Order deleted' : 'Deleted');
+    }
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target.id === 'q') { ui.q = e.target.value; render(); }
+    else if (e.target.id === 'f-waiter') ui.draft.waiter = e.target.value;
+  });
+  document.addEventListener('change', function (e) {
+    var id = e.target.id;
+    if (id !== 'rFrom' && id !== 'rTo') return;
+    var f = document.getElementById('rFrom').value, t = document.getElementById('rTo').value;
+    if (!validKey(f) || !validKey(t)) return;
+    if (id === 'rFrom' && f > t) t = f;
+    if (id === 'rTo' && t < f) f = t;
+    setRange(f, t);
+  });
+  document.addEventListener('focusout', function (e) {
+    if ((e.target.id === 'rFrom' || e.target.id === 'rTo' || e.target.id === 'q') && ui.dirty) setTimeout(function () { if (!editingDate()) render(); }, 50);
+  });
+  document.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!ui.admin || !ui.sheet || !backend) return;
+    var f = e.target.dataset.form, s = ui.sheet;
+    if (f === 'item') {
+      var name = document.getElementById('f-name').value.trim();
+      var price = parseFloat(document.getElementById('f-price').value);
+      var cat = document.getElementById('f-cat').value;
+      var avail = document.getElementById('f-avail').checked;
+      if (!name) { s.err = 'Enter an item name.'; render(); return; }
+      if (isNaN(price) || price < 0) { s.err = 'Enter a price of 0 or more.'; render(); return; }
+      price = Math.round(price * 100) / 100;
+      guarded(async function () {
+        await backend.saveItem({ id: s.id, name: name, price: price, cat: cat, avail: avail });
+        if (s.id && !avail) delete ui.cart[s.id];
+      }, 'Item saved');
+    } else if (f === 'cat') {
+      var cn = document.getElementById('f-catname').value.trim();
+      if (!cn) { s.err = 'Enter a category name.'; render(); return; }
+      guarded(function () { return backend.saveCat({ id: s.id, name: cn }); }, 'Category saved');
+    } else if (f === 'table') {
+      var tn = document.getElementById('f-tablename').value.trim();
+      if (!tn) { s.err = 'Enter a table name.'; render(); return; }
+      if (state.tables.some(function (t) { return t.id !== s.id && t.name.toLowerCase() === tn.toLowerCase(); })) { s.err = 'There is already a table with that name.'; render(); return; }
+      if (!s.id && state.tables.length >= 60) { s.err = 'You can have up to 60 tables.'; render(); return; }
+      var tlist = state.tables.map(function (t) { return { id: t.id, name: t.id === s.id ? tn : t.name, pos: t.pos || 0 }; });
+      if (!s.id) tlist.push({ id: uid(), name: tn, pos: Date.now() });
+      guarded(function () { return backend.putTables(tlist); }, 'Table saved');
+    } else if (f === 'pin') {
+      var p = document.getElementById('f-pin').value.trim();
+      if (!/^\d{6}$/.test(p)) { s.err = 'Use exactly 6 digits.'; render(); return; }
+      guarded(function () { return backend.setPin(p); }, 'PIN changed on all phones');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'q') { e.target.blur(); return; }
+    if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
+    if (ui.tab === 'menu' && !ui.admin && !ui.sheet && !/^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName || '')) {
+      if (/^\d$/.test(e.key)) pinKey(e.key);
+      else if (e.key === 'Backspace') { ui.pinBuf = ui.pinBuf.slice(0, -1); render(); }
+    }
+  });
+
+  render();
+  connect();
+})();
+</script>
+
+</body></html>
